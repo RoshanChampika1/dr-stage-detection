@@ -35,6 +35,13 @@ def load_config(path: str | Path = DEFAULT_CONFIG) -> dict[str, Any]:
     if env_root:
         cfg["paths"]["data_root"] = env_root
 
+    # Preprocessed image cache: environment variable, else Kaggle's local temp disk.
+    env_cache = os.environ.get("DR_PROCESSED_DIR")
+    if env_cache:
+        cfg["paths"]["processed_dir"] = env_cache
+    elif Path("/kaggle/temp").exists():
+        cfg["paths"]["processed_dir"] = "/kaggle/temp/processed"
+
     resolved = {}
     for key, value in cfg["paths"].items():
         p = Path(value)

@@ -80,9 +80,30 @@ jupyter notebook notebooks/01_eda.ipynb
 # Preprocessing demonstration and quality measures
 jupyter notebook notebooks/02_preprocessing.ipynb
 
+# Augmentation and class balancing figures
+jupyter notebook notebooks/03_augmentation_balancing.ipynb
+
+# Train (two-stage transfer learning, see src/training/train.py for all options)
+python -m src.training.train --run-name effb0_cw
+python -m src.training.train --run-name effb0_sampler --balancing sampler
+python -m src.training.train --run-name resnet50_cw --backbone resnet50
+python -m src.training.train --run-name effb0_raw --no-enhancement   # preprocessing ablation
+
 # Unit tests
 pytest
 ```
+
+Each training run writes `models/<run>/best.pt`, `outputs/logs/<run>/history.csv`,
+`outputs/figures/<run>_curves.png` and a summary row in `outputs/metrics/experiments.csv`.
+
+## Model and training
+
+- Backbones (timm, ImageNet-pretrained): EfficientNet-B0 (main), ResNet50, MobileNetV3-Large
+- Two-stage transfer learning: frozen backbone (head only, lr 1e-3, 3 epochs), then full
+  fine-tuning (lr 1e-4, cosine schedule, early stopping on validation QWK, patience 5)
+- AdamW, weight decay 1e-4, dropout 0.3, label smoothing 0.05, mixed precision on GPU
+- Class imbalance: class-weighted loss or weighted sampler (square-root inverse frequency)
+- Augmentation (training only): rotation, flips, zoom/shift, brightness/contrast, small hue shift
 
 ### Running on Kaggle
 
@@ -92,5 +113,8 @@ In a new Kaggle Notebook (GPU on, dataset attached, internet on):
 !git clone https://github.com/RoshanChampika1/dr-stage-detection.git
 %cd dr-stage-detection
 !pip install -q timm albumentations
-!python -m src.data.split
+!python -m src.training.train --run-name effb0_cw
 ```
+
+Turn the GPU on (*Settings → Accelerator → GPU T4 x2*) and internet on (needed to download
+the pretrained weights). On Kaggle, preprocessed images are cached in `/kaggle/temp/processed`.

@@ -11,6 +11,8 @@ paths:
   # Kaggle Notebook: /kaggle/input/diabetic-retinopathy-2015-data-colored-resized
   data_root: data/raw
   splits_dir: data/splits
+  # Cache of preprocessed images. On Kaggle this defaults to /kaggle/temp/processed
+  # (fast local disk, not included in the notebook output).
   processed_dir: data/processed
   models_dir: models
   figures_dir: outputs/figures
@@ -56,11 +58,24 @@ preprocessing:
   denoise: median             # median | bilateral | none
   denoise_kernel: 3
 
+augmentation:
+  # Applied to the TRAINING set only, on the preprocessed image.
+  rotate_limit: 180           # fundus photos have no fixed "up", any angle is valid
+  scale: [0.9, 1.1]           # zoom in / out by up to 10%
+  translate: 0.05             # shift by up to 5% of the image size
+  hflip: 0.5
+  vflip: 0.5
+  brightness: 0.2             # +/-20% brightness
+  contrast: 0.2               # +/-20% contrast
+  hue_shift: 5                # small colour shifts (camera differences)
+  sat_shift: 10
+  p_color: 0.5                # probability of applying the colour changes
+
 training:
   backbone: efficientnet_b0   # efficientnet_b0 | resnet50 | mobilenetv3_large_100
   pretrained: true
   batch_size: 32
-  num_workers: 2
+  num_workers: 4
   # Stage 1: backbone frozen, train the classification head only.
   head_epochs: 3
   head_lr: 1.0e-3
@@ -75,4 +90,8 @@ training:
   early_stopping_patience: 5
   monitor: val_qwk            # metric used for early stopping and best checkpoint
   balancing: class_weights    # class_weights | sampler | none
+  # Weight of class c = (N / (K * n_c)) ** balance_power.
+  # 1.0 = full inverse frequency (36x for Proliferative), 0.5 = square root (6x).
+  balance_power: 0.5
   amp: true
+  cache_images: true          # preprocess every image once and reuse it each epoch

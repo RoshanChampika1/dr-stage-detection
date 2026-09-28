@@ -1,0 +1,35 @@
+Temp/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.ipynb_checkpoints/
+.pytest_cache/
+
+# Datasets (downloaded from Kaggle, too large for git)
+data/raw/*
+data/processed/*
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+
+# Model checkpoints and training outputs
+models/*
+!models/.gitkeep
+*.pth
+*.pt
+*.h5
+outputs/logs/*
+!outputs/logs/.gitkeep
+
+# Secrets
+kaggle.json
+.env
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/

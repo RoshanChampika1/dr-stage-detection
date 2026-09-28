@@ -1,0 +1,77 @@
+# Experiment configuration for DR stage detection.
+# Paths are relative to the project root unless absolute.
+# Any value can be overridden on Kaggle by setting the DR_DATA_ROOT
+# environment variable (see src/utils/config.py).
+
+seed: 42
+
+paths:
+  # Folder that contains the extracted Kaggle dataset.
+  # Locally: data/raw
+  # Kaggle Notebook: /kaggle/input/diabetic-retinopathy-2015-data-colored-resized
+  data_root: data/raw
+  splits_dir: data/splits
+  processed_dir: data/processed
+  models_dir: models
+  figures_dir: outputs/figures
+  logs_dir: outputs/logs
+  metrics_dir: outputs/metrics
+
+data:
+  # Optional labels CSV inside data_root (columns: image, level).
+  # If it is not found, labels are taken from the class folder names.
+  labels_csv: trainLabels.csv
+  image_extensions: [".png", ".jpg", ".jpeg"]
+  num_classes: 5
+  class_names: ["No DR", "Mild", "Moderate", "Severe", "Proliferative DR"]
+  # Folder names used by the Kaggle dataset, mapped to stage labels.
+  folder_to_label:
+    No_DR: 0
+    Mild: 1
+    Moderate: 2
+    Severe: 3
+    Proliferate_DR: 4
+
+split:
+  # Patient-level stratified split (both eyes of a patient stay together).
+  train: 0.70
+  val: 0.15
+  test: 0.15
+
+image:
+  size: 224
+  # ImageNet statistics, used because the backbones are ImageNet-pretrained.
+  mean: [0.485, 0.456, 0.406]
+  std: [0.229, 0.224, 0.225]
+
+preprocessing:
+  crop_black_border: true
+  border_threshold: 10        # pixel intensity below this counts as background
+  clahe: true
+  clahe_clip_limit: 2.0
+  clahe_tile_grid: 8
+  ben_graham: true
+  ben_graham_sigma: 10        # Gaussian sigma for blur subtraction
+  denoise: median             # median | bilateral | none
+  denoise_kernel: 3
+
+training:
+  backbone: efficientnet_b0   # efficientnet_b0 | resnet50 | mobilenetv3_large_100
+  pretrained: true
+  batch_size: 32
+  num_workers: 2
+  # Stage 1: backbone frozen, train the classification head only.
+  head_epochs: 3
+  head_lr: 1.0e-3
+  # Stage 2: unfreeze and fine-tune the whole network.
+  finetune_epochs: 20
+  finetune_lr: 1.0e-4
+  weight_decay: 1.0e-4
+  dropout: 0.3
+  label_smoothing: 0.05
+  optimizer: adamw
+  scheduler: cosine           # cosine | plateau
+  early_stopping_patience: 5
+  monitor: val_qwk            # metric used for early stopping and best checkpoint
+  balancing: class_weights    # class_weights | sampler | none
+  amp: true

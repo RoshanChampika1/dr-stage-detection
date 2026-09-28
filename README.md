@@ -59,6 +59,13 @@ kaggle datasets download -d sovitrath/diabetic-retinopathy-2015-data-colored-res
 
 If the data is somewhere else, point to it with `export DR_DATA_ROOT=/path/to/dataset`.
 
+## Preprocessing
+
+`src/data/preprocessing.py` applies, in order: black border crop, resize to 224×224,
+3×3 median denoising, CLAHE on the LAB lightness channel, Ben Graham blur subtraction
+(σ = 10) and a retina mask. ImageNet normalisation is applied when converting to a tensor.
+Each step can be switched on or off under `preprocessing:` in `configs/config.yaml`.
+
 ## Usage
 
 All settings (paths, image size, preprocessing, hyperparameters) live in `configs/config.yaml`.
@@ -69,6 +76,9 @@ python -m src.data.split
 
 # Exploratory data analysis (figures saved to outputs/figures/)
 jupyter notebook notebooks/01_eda.ipynb
+
+# Preprocessing demonstration and quality measures
+jupyter notebook notebooks/02_preprocessing.ipynb
 
 # Unit tests
 pytest

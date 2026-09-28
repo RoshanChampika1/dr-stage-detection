@@ -71,3 +71,13 @@ def test_split_counts_table(fake_dataset):
     table = split_counts(patient_level_split(df), CLASS_NAMES)
     assert table.loc["Total"].sum() == 400
     assert list(table.columns) == ["train", "val", "test"]
+
+
+def test_find_kaggle_data_root(tmp_path):
+    from src.utils.config import find_kaggle_data_root
+
+    # Same nesting as the Kaggle dataset: <slug>/colored_images/colored_images/No_DR
+    ds = tmp_path / "dataset-slug" / "colored_images"
+    (ds / "colored_images" / "No_DR").mkdir(parents=True)
+    assert find_kaggle_data_root(tmp_path) == ds
+    assert find_kaggle_data_root(tmp_path / "missing") is None

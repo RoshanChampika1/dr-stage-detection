@@ -148,6 +148,12 @@ def main() -> None:
     # ---- Data -----------------------------------------------------------
     read = lambda s: pd.read_csv(paths["splits_dir"] / f"{s}.csv", dtype={"patient_id": str})
     train_df, val_df = read("train"), read("val")
+    first = paths["data_root"] / train_df["path"].iloc[0]
+    if not first.exists():
+        raise FileNotFoundError(
+            f"Image not found: {first}\nThe data root is wrong. Attach the dataset "
+            "(Kaggle) or set DR_DATA_ROOT to the folder that contains 'colored_images'.")
+    print(f"Data root: {paths['data_root']}\nImage cache: {paths['processed_dir']}")
     if args.subset < 1.0:
         train_df = train_df.groupby("label", group_keys=False).sample(
             frac=args.subset, random_state=cfg["seed"])

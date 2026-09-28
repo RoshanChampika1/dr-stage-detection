@@ -1,0 +1,7 @@
+,train,val,test
+0 No DR,18070,3865,3875
+1 Mild,1708,367,368
+2 Moderate,3704,798,790
+3 Severe,611,133,129
+4 Proliferative DR,495,105,108
+Total,24588,5268,5270

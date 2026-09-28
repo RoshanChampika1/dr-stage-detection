@@ -6,6 +6,7 @@ so every image is processed identically everywhere.
 Pipeline (each step can be switched on or off in ``configs/config.yaml``):
 
 1. Crop the black border   remove the empty background around the retina
+                           (adaptive threshold, works on dark and overexposed photos)
 2. Resize                  back to the network input size (224 x 224)
 3. Denoise                 median or bilateral filter to remove sensor noise
 4. CLAHE                   local contrast enhancement on the LAB lightness
@@ -26,22 +27,35 @@ import cv2
 import numpy as np
 
 
-def crop_black_border(img: np.ndarray, threshold: int = 10) -> np.ndarray:
+def retina_threshold(grey: np.ndarray, min_threshold: int = 4) -> float:
+    """Grey level separating the retina from the black background.
+
+    A single fixed value fails on this dataset: very dark photos have a
+    retina darker than 10, while overexposed photos have a glow around the
+    retina brighter than 10. The threshold is therefore 20% of the image's
+    bright level (90th percentile, which lies inside the retina because the
+    retina covers most of the frame), never lower than ``min_threshold``.
+    """
+    return max(float(min_threshold), 0.2 * float(np.percentile(grey, 90)))
+
+
+def crop_black_border(img: np.ndarray, threshold: int = 4) -> np.ndarray:
     """Crop the dark background so the retina fills the frame.
 
-    Pixels with grey level above ``threshold`` are treated as retina. The
-    image is cropped to the bounding box of those pixels. If the image is
-    almost entirely dark (a failed photo), it is returned unchanged.
+    Pixels brighter than the adaptive threshold (see :func:`retina_threshold`)
+    are treated as retina. The image is cropped to the bounding box of those
+    pixels. If almost nothing is found (a failed photo), the image is returned
+    unchanged.
 
     Args:
         img: RGB image, uint8, shape (H, W, 3).
-        threshold: Grey level separating background from retina.
+        threshold: Minimum grey level for the retina/background threshold.
 
     Returns:
         Cropped RGB image.
     """
     grey = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
-    mask = grey > threshold
+    mask = grey > retina_threshold(grey, threshold)
     if mask.sum() < 0.05 * mask.size:
         return img
     # A row/column counts as retina only if at least 1% of it is bright,
@@ -110,10 +124,11 @@ def circular_mask(img: np.ndarray, scale: float = 0.95) -> np.ndarray:
     return img * mask[:, :, None]
 
 
-def retina_mask(img: np.ndarray, threshold: int = 10, shrink: float = 0.06) -> np.ndarray:
+def retina_mask(img: np.ndarray, threshold: int = 4, shrink: float = 0.06) -> np.ndarray:
     """Binary mask (0/1, uint8) of the retina, shrunk slightly at the edge.
 
-    The retina is found by thresholding the grey image. The largest region is
+    The retina is found with the adaptive threshold of
+    :func:`retina_threshold`. The largest region is
     kept and filled with its convex hull (the retina is convex, so dark
     lesions or notches on the edge do not create holes). The mask is then
     eroded by ``shrink`` x image size to remove the bright halo that blur
@@ -122,7 +137,7 @@ def retina_mask(img: np.ndarray, threshold: int = 10, shrink: float = 0.06) -> n
     """
     h, w = img.shape[:2]
     grey = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
-    raw = (grey > threshold).astype(np.uint8)
+    raw = (grey > retina_threshold(grey, threshold)).astype(np.uint8)
     contours, _ = cv2.findContours(raw, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     mask = np.zeros((h, w), dtype=np.uint8)
     if contours:
@@ -133,7 +148,10 @@ def retina_mask(img: np.ndarray, threshold: int = 10, shrink: float = 0.06) -> n
         cv2.circle(mask, (w // 2, h // 2), int(min(h, w) * 0.45), 1, thickness=-1)
         return mask
     k = max(3, int(min(h, w) * shrink) * 2 + 1)
-    return cv2.erode(mask, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k, k)))
+    # Treat the area outside the frame as background, so the mask also
+    # shrinks where the retina touches the image edge (common in this dataset).
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k, k))
+    return cv2.erode(mask, kernel, borderType=cv2.BORDER_CONSTANT, borderValue=0)
 
 
 def preprocess_steps(img: np.ndarray, cfg: dict[str, Any]) -> dict[str, np.ndarray]:
@@ -153,7 +171,7 @@ def preprocess_steps(img: np.ndarray, cfg: dict[str, Any]) -> dict[str, np.ndarr
     steps = {"Original": img}
 
     if p.get("crop_black_border", True):
-        img = crop_black_border(img, p.get("border_threshold", 10))
+        img = crop_black_border(img, p.get("border_threshold", 4))
         steps["Border cropped"] = img
 
     img = resize(img, size)
@@ -164,7 +182,7 @@ def preprocess_steps(img: np.ndarray, cfg: dict[str, Any]) -> dict[str, np.ndarr
         steps["Denoised"] = img
 
     # Find the retina before enhancement changes the background brightness.
-    mask = retina_mask(img, p.get("border_threshold", 10))
+    mask = retina_mask(img, p.get("border_threshold", 4))
 
     if p.get("clahe", True):
         img = apply_clahe(img, p.get("clahe_clip_limit", 2.0), p.get("clahe_tile_grid", 8))
@@ -206,20 +224,28 @@ def normalize(img: np.ndarray, mean: list[float], std: list[float]) -> np.ndarra
     return (x - np.array(mean, dtype=np.float32)) / np.array(std, dtype=np.float32)
 
 
-def image_quality_metrics(img: np.ndarray, threshold: int = 10) -> dict[str, float]:
+def image_quality_metrics(img: np.ndarray, threshold: int = 4) -> dict[str, float]:
     """Simple quality measures used to show that preprocessing helps.
 
-    - rms_contrast: standard deviation of grey levels inside the retina
+    All measures are computed inside the retina only (eroded retina mask), so
+    the sharp edge between the retina and the black background does not
+    count as image detail.
+
+    - brightness: mean grey level
+    - rms_contrast: standard deviation of grey levels
     - entropy: Shannon entropy of the grey histogram (information content)
-    - sharpness: variance of the Laplacian (edge strength)
+    - sharpness: variance of the Laplacian (edge strength of vessels / lesions)
     """
     grey = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
-    mask = grey > threshold
+    mask = retina_mask(img, threshold, shrink=0.08).astype(bool)
     vals = grey[mask] if mask.any() else grey.ravel()
     hist = np.bincount(vals, minlength=256).astype(np.float64)
     prob = hist[hist > 0] / hist.sum()
+    lap = cv2.Laplacian(grey, cv2.CV_64F)
+    lap_vals = lap[mask] if mask.any() else lap.ravel()
     return {
+        "brightness": float(vals.mean()),
         "rms_contrast": float(vals.std()),
         "entropy": float(-(prob * np.log2(prob)).sum()),
-        "sharpness": float(cv2.Laplacian(grey, cv2.CV_64F).var()),
+        "sharpness": float(lap_vals.var()),
     }

@@ -46,7 +46,8 @@ image:
 
 preprocessing:
   crop_black_border: true
-  border_threshold: 10        # pixel intensity below this counts as background
+  border_threshold: 4         # minimum retina/background threshold; the actual
+                              # value adapts per image (20% of its bright level)
   clahe: true
   clahe_clip_limit: 2.0
   clahe_tile_grid: 8

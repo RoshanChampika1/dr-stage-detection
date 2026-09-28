@@ -96,3 +96,23 @@ def test_normalize_matches_imagenet_stats():
     img = np.full((4, 4, 3), 255, dtype=np.uint8)
     out = pp.normalize(img, [0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
     assert out.dtype == np.float32 and np.allclose(out, 1.0)
+
+
+def test_crop_works_on_very_dark_retina():
+    """Retina darker than 10 (a very dark photo) is still found and cropped."""
+    img = np.zeros((200, 260, 3), dtype=np.uint8)
+    cv2.circle(img, (130, 100), 80, (9, 7, 6), -1)
+    cropped = pp.crop_black_border(img)
+    assert abs(cropped.shape[1] - 161) <= 3
+
+
+def test_mask_excludes_glow_around_overexposed_retina():
+    """A faint glow around a white retina must not be treated as retina."""
+    img = np.zeros((200, 200, 3), dtype=np.uint8)
+    cv2.circle(img, (100, 100), 95, (25, 25, 25), -1)   # glow
+    cv2.circle(img, (100, 100), 70, (255, 255, 255), -1)  # overexposed retina
+    mask = pp.retina_mask(img)
+    assert mask[100, 100 + 75] == 0  # glow ring excluded
+    assert mask[100, 100] == 1
+    # the retina edge is excluded, so sharpness inside the mask is ~0
+    assert pp.image_quality_metrics(img)["sharpness"] < 1

@@ -1,0 +1,19 @@
+{
+  "run": "tune_lr1e-4_d0.2",
+  "backbone": "efficientnet_b0",
+  "balancing": "class_weights",
+  "balance_power": 0.5,
+  "enhancement": true,
+  "pretrained": true,
+  "finetune_lr": 0.0001,
+  "dropout": 0.2,
+  "batch_size": 32,
+  "subset": 0.3,
+  "epochs_run": 23,
+  "best_epoch": 23,
+  "val_acc": 0.7062,
+  "val_macro_f1": 0.3422,
+  "val_qwk": 0.4509,
+  "val_binary_auc": 0.6967,
+  "minutes": 13.1
+}

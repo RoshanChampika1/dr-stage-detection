@@ -1,0 +1,13 @@
+run,backbone,balancing,balance_power,enhancement,pretrained,finetune_lr,dropout,batch_size,subset,epochs_run,best_epoch,val_acc,val_macro_f1,val_qwk,val_binary_auc,minutes
+effb0_cw,efficientnet_b0,class_weights,0.5,True,True,0.0001,0.3,32,1.0,19,14,0.7678,0.4313,0.5749,0.7745,29.8
+effb0_none,efficientnet_b0,none,0.5,True,True,0.0001,0.3,32,1.0,17,12,0.7737,0.4161,0.5341,0.762,25.1
+effb0_raw,efficientnet_b0,class_weights,0.5,False,True,0.0001,0.3,32,1.0,21,16,0.7823,0.459,0.6527,0.8095,31.2
+effb0_sampler,efficientnet_b0,sampler,0.5,True,True,0.0001,0.3,32,1.0,13,8,0.7536,0.3964,0.5293,0.7453,20.6
+mobilenet_cw,mobilenetv3,class_weights,0.5,True,True,0.0001,0.3,32,1.0,23,18,0.7616,0.4294,0.5475,0.7646,32.1
+resnet50_cw,resnet50,class_weights,0.5,True,True,0.0001,0.3,32,1.0,21,16,0.7447,0.4426,0.5882,0.7755,38.4
+tune_lr1e-4_d0.2,efficientnet_b0,class_weights,0.5,True,True,0.0001,0.2,32,0.3,23,23,0.7062,0.3422,0.4509,0.6967,13.1
+tune_lr1e-4_d0.4,efficientnet_b0,class_weights,0.5,True,True,0.0001,0.4,32,0.3,23,19,0.6902,0.3647,0.4829,0.7102,13.5
+tune_lr3e-4_d0.2,efficientnet_b0,class_weights,0.5,True,True,0.0003,0.2,32,0.3,18,13,0.6847,0.4088,0.5257,0.7318,10.1
+tune_lr3e-4_d0.4,efficientnet_b0,class_weights,0.5,True,True,0.0003,0.4,32,0.3,21,16,0.7236,0.3932,0.5471,0.7506,11.8
+tune_lr3e-5_d0.2,efficientnet_b0,class_weights,0.5,True,True,3e-05,0.2,32,0.3,23,21,0.6619,0.3163,0.3472,0.6523,13.7
+tune_lr3e-5_d0.4,efficientnet_b0,class_weights,0.5,True,True,3e-05,0.4,32,0.3,23,20,0.6915,0.3062,0.3474,0.6593,13.7

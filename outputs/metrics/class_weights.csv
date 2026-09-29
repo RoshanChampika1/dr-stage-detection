@@ -1,0 +1,6 @@
+Stage,Train images,Weight (power 0.5),Weight (power 1.0)
+No DR,18070,0.645,0.272
+Mild,1708,2.098,2.879
+Moderate,3704,1.425,1.328
+Severe,611,3.508,8.048
+Proliferative DR,495,3.897,9.935

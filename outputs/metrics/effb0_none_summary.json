@@ -1,0 +1,19 @@
+{
+  "run": "effb0_none",
+  "backbone": "efficientnet_b0",
+  "balancing": "none",
+  "balance_power": 0.5,
+  "enhancement": true,
+  "pretrained": true,
+  "finetune_lr": 0.0001,
+  "dropout": 0.3,
+  "batch_size": 32,
+  "subset": 1.0,
+  "epochs_run": 17,
+  "best_epoch": 12,
+  "val_acc": 0.7737,
+  "val_macro_f1": 0.4161,
+  "val_qwk": 0.5341,
+  "val_binary_auc": 0.762,
+  "minutes": 25.1
+}

@@ -39,6 +39,7 @@ def test_evaluate_end_to_end(fake_project):
     p = load_config(fake_project)["paths"]
     m = json.load(open(p["metrics_dir"] / f"{run}_test.json"))
     assert 0 <= m["accuracy"] <= 1 and m["ms_per_image_cpu"] > 0
+    assert 0 <= m["screening_threshold"] <= 1 and "screening_sensitivity" in m
     for fig in ("confusion_matrix", "roc", "gradcam"):
         assert (p["figures_dir"] / f"{run}_{fig}.png").exists()
     preds = pd.read_csv(p["metrics_dir"] / f"{run}_test_predictions.csv")

@@ -95,3 +95,8 @@ training:
   balance_power: 0.5
   amp: true
   cache_images: true          # preprocess every image once and reuse it each epoch
+
+evaluation:
+  # Screening operating point: threshold on P(DR) = 1 - P(No DR), chosen on the
+  # validation set to reach this sensitivity, then applied unchanged to the test set.
+  target_sensitivity: 0.80

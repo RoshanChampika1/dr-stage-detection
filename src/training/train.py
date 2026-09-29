@@ -20,6 +20,7 @@ Examples:
     python -m src.training.train --run-name effb0_sampler --balancing sampler
     python -m src.training.train --run-name resnet50_cw --backbone resnet50
     python -m src.training.train --run-name effb0_raw --no-enhancement
+    python -m src.training.train --run-name effb0_clahe --set preprocessing.denoise=none preprocessing.ben_graham=false
 """
 
 from __future__ import annotations
@@ -73,6 +74,9 @@ def parse_args() -> argparse.Namespace:
     ap.add_argument("--no-enhancement", action="store_true",
                     help="Ablation: switch off denoising, CLAHE and Ben Graham (crop + resize only)")
     ap.add_argument("--no-pretrained", action="store_true", help="Random init (tests / ablation)")
+    ap.add_argument("--set", nargs="*", default=[], metavar="KEY=VALUE",
+                    help="Override any config value, e.g. --set preprocessing.clahe=false "
+                         "preprocessing.denoise=none")
     return ap.parse_args()
 
 
@@ -95,7 +99,34 @@ def apply_overrides(cfg: dict, args: argparse.Namespace) -> dict:
     if args.no_enhancement:
         p = cfg["preprocessing"]
         p["denoise"], p["clahe"], p["ben_graham"] = "none", False, False
+    for item in args.set:
+        key, _, raw = item.partition("=")
+        node = cfg
+        *parents, leaf = key.split(".")
+        for part in parents:
+            node = node[part]
+        if leaf not in node:
+            raise KeyError(f"Unknown config key: {key}")
+        node[leaf] = parse_value(raw)
     return cfg
+
+
+def parse_value(raw: str):
+    """Parse a --set value: numbers (including 3e-4), true/false, lists, text."""
+    value = yaml.safe_load(raw)
+    if isinstance(value, str):  # YAML reads "3e-4" (no dot) as text
+        try:
+            return float(value)
+        except ValueError:
+            pass
+    return value
+
+
+def describe_preprocessing(p: dict) -> str:
+    """Short label of the enhancement steps that are switched on."""
+    steps = [name for name, on in (("denoise", p.get("denoise", "none") != "none"),
+                                   ("clahe", p.get("clahe")), ("ben_graham", p.get("ben_graham"))) if on]
+    return "+".join(steps) if steps else "crop+resize only"
 
 
 def make_optimizer(model: nn.Module, name: str, lr: float, weight_decay: float):
@@ -270,7 +301,9 @@ def main() -> None:
 
     summary = {
         "run": run, "backbone": t["backbone"], "balancing": t["balancing"],
-        "balance_power": t["balance_power"], "enhancement": not args.no_enhancement,
+        "balance_power": t["balance_power"],
+        "enhancement": describe_preprocessing(cfg["preprocessing"]) != "crop+resize only",
+        "preprocessing": describe_preprocessing(cfg["preprocessing"]),
         "pretrained": t["pretrained"], "finetune_lr": t["finetune_lr"], "dropout": t["dropout"],
         "batch_size": t["batch_size"], "subset": args.subset, "epochs_run": epoch,
         "best_epoch": best_metrics["epoch"], "val_acc": round(best_metrics["accuracy"], 4),

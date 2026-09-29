@@ -40,7 +40,7 @@ from torch.utils.data import DataLoader
 from src.data.dataset import DRDataset, build_cache
 from src.data.preprocessing import load_image
 from src.evaluation.gradcam import gradcam, overlay
-from src.evaluation.metrics import compute_metrics
+from src.evaluation.metrics import binary_at_threshold, compute_metrics, threshold_for_sensitivity
 from src.evaluation.summarize import rebuild_tables
 from src.models.factory import build_model
 from src.utils.config import DEFAULT_CONFIG, load_config
@@ -97,12 +97,15 @@ def plot_confusion(y, pred, names, path, title):
     fig.suptitle(title); plt.tight_layout(); plt.savefig(path, dpi=200); plt.close(fig)
 
 
-def plot_roc(y, probs, names, path, title):
+def plot_roc(y, probs, names, path, title, points=None):
+    """ROC curves. ``points`` = {label: (sensitivity, specificity)} operating points."""
     fig, axes = plt.subplots(1, 2, figsize=(12, 5))
     bt = (y > 0).astype(int)
     if len(np.unique(bt)) == 2:
         fpr, tpr, _ = roc_curve(bt, 1 - probs[:, 0])
         axes[0].plot(fpr, tpr, lw=2, label=f"AUC = {auc(fpr, tpr):.3f}")
+        for (label, (sens, spec)), marker in zip((points or {}).items(), ("o", "s", "^")):
+            axes[0].plot(1 - spec, sens, marker, ms=9, label=f"{label}: sens {sens:.2f}, spec {spec:.2f}")
     axes[0].set_title("Binary: any DR (stage 1–4) vs No DR")
     for k, name in enumerate(names):
         yk = (y == k).astype(int)
@@ -181,6 +184,19 @@ def evaluate_run(run: str, base_cfg: dict, device: torch.device, workers: int) -
     y, probs = predict(model, loader, device)
     pred = probs.argmax(1)
     m = compute_metrics(y, pred, probs, k)
+
+    # Screening threshold: chosen on the validation set, applied to the test set.
+    val_df = pd.read_csv(paths["splits_dir"] / "val.csv", dtype={"patient_id": str})
+    val_cache = build_cache(val_df, cfg, workers=max(workers, 1)) if cache is not None else None
+    val_loader = DataLoader(DRDataset(val_df, cfg, None, val_cache), batch_size=64, shuffle=False,
+                            num_workers=workers, pin_memory=device.type == "cuda")
+    vy, vprobs = predict(model, val_loader, device)
+    target = base_cfg.get("evaluation", {}).get("target_sensitivity", 0.80)
+    thr = threshold_for_sensitivity(vy, 1 - vprobs[:, 0], target)
+    screen = binary_at_threshold(y, 1 - probs[:, 0], thr)
+    m.update(screening_target_sensitivity=target, screening_threshold=thr,
+             screening_sensitivity=screen["sensitivity"], screening_specificity=screen["specificity"],
+             screening_accuracy=screen["accuracy"])
     m["ms_per_image_" + device.type] = time_inference(model, ds, device)
     if device.type == "cuda":  # also report CPU speed, relevant for deployment
         m["ms_per_image_cpu"] = time_inference(model.cpu(), ds, torch.device("cpu"), n=20)
@@ -205,13 +221,17 @@ def evaluate_run(run: str, base_cfg: dict, device: torch.device, workers: int) -
     title = f"{run} ({ckpt['backbone']}) on the test set"
     root = paths["data_root"]
     plot_confusion(y, pred, names, out_f / f"{run}_confusion_matrix.png", title)
-    plot_roc(y, probs, names, out_f / f"{run}_roc.png", title)
+    plot_roc(y, probs, names, out_f / f"{run}_roc.png", title, points={
+        "Most likely class": (m["binary_sensitivity"], m["binary_specificity"]),
+        f"Threshold {thr:.2f} (val sens {target:.0%})": (m["screening_sensitivity"], m["screening_specificity"]),
+    })
     plot_misclassified(df, ds, root, names, out_f / f"{run}_misclassified.png", title)
     plot_gradcam(model, df, ds, root, names, out_f / f"{run}_gradcam.png", title, device)
 
     print(f"{run}: acc {m['accuracy']:.3f} | macro F1 {m['macro_f1']:.3f} | QWK {m['qwk']:.3f} | "
           f"binary AUC {m.get('binary_auc', float('nan')):.3f} sens {m['binary_sensitivity']:.3f} "
-          f"spec {m['binary_specificity']:.3f}")
+          f"spec {m['binary_specificity']:.3f} | screening (thr {thr:.2f}): "
+          f"sens {m['screening_sensitivity']:.3f} spec {m['screening_specificity']:.3f}")
     return m
 
 

@@ -65,3 +65,31 @@ def compute_metrics(
     if probs is not None and len(np.unique(bt)) == 2:
         out["binary_auc"] = float(roc_auc_score(bt, 1.0 - probs[:, 0]))
     return out
+
+
+def threshold_for_sensitivity(y_true: np.ndarray, p_dr: np.ndarray, target: float = 0.80) -> float:
+    """Highest threshold on P(DR) that still reaches the target sensitivity.
+
+    Chosen on the VALIDATION set and then applied unchanged to the test set.
+    For screening, missing DR (a false negative) is worse than an extra
+    referral, so the default "most likely class" rule, which is very
+    cautious on this imbalanced data, is replaced by a threshold on
+    P(DR) = 1 - P(No DR).
+    """
+    positives = np.sort(p_dr[y_true > 0])[::-1]
+    if len(positives) == 0:
+        return 0.5
+    k = int(np.ceil(target * len(positives))) - 1
+    return float(positives[min(max(k, 0), len(positives) - 1)])
+
+
+def binary_at_threshold(y_true: np.ndarray, p_dr: np.ndarray, threshold: float) -> dict:
+    """Sensitivity, specificity and accuracy for "DR if P(DR) >= threshold"."""
+    bt, bp = (y_true > 0).astype(int), (p_dr >= threshold).astype(int)
+    tn, fp, fn, tp = confusion_matrix(bt, bp, labels=[0, 1]).ravel()
+    return {
+        "threshold": float(threshold),
+        "sensitivity": float(tp / max(tp + fn, 1)),
+        "specificity": float(tn / max(tn + fp, 1)),
+        "accuracy": float((tp + tn) / max(len(bt), 1)),
+    }

@@ -11,7 +11,7 @@ import pandas as pd
 import pytest
 import torch
 
-from src.evaluation.metrics import compute_metrics
+from src.evaluation.metrics import binary_at_threshold, compute_metrics, threshold_for_sensitivity
 from src.models.factory import (
     build_model,
     count_parameters,
@@ -58,6 +58,31 @@ def test_metrics_perfect_and_binary():
     # predicting stage 2 instead of 1 is still correct for "any DR"
     m2 = compute_metrics(y, np.array([0, 0, 2, 2, 3, 4]))
     assert m2["binary_accuracy"] == 1 and m2["accuracy"] < 1
+
+
+def test_screening_threshold_reaches_target_sensitivity():
+    rng = np.random.default_rng(0)
+    y = np.array([0] * 700 + [2] * 300)
+    p = np.clip(np.where(y > 0, 0.45, 0.2) + rng.normal(0, 0.15, len(y)), 0, 1)
+    thr = threshold_for_sensitivity(y, p, 0.8)
+    r = binary_at_threshold(y, p, thr)
+    assert r["sensitivity"] >= 0.8 and 0 < r["specificity"] < 1
+
+
+def test_set_override_parses_values(fake_project):
+    from src.training.train import apply_overrides, describe_preprocessing
+    import argparse
+    args = argparse.Namespace(**{k: None for k in [
+        "backbone", "balancing", "balance_power", "head_epochs", "finetune_epochs", "head_lr",
+        "finetune_lr", "dropout", "batch_size", "optimizer", "scheduler", "workers"]},
+        no_pretrained=False, no_enhancement=False,
+        set=["preprocessing.clahe=false", "preprocessing.denoise=none", "training.finetune_lr=3e-4"])
+    cfg = apply_overrides(load_config(fake_project), args)
+    assert cfg["preprocessing"]["clahe"] is False and cfg["training"]["finetune_lr"] == 3e-4
+    assert describe_preprocessing(cfg["preprocessing"]) == "ben_graham"
+    args.set = ["preprocessing.nope=1"]
+    with pytest.raises(KeyError):
+        apply_overrides(load_config(fake_project), args)
 
 
 def test_qwk_penalises_far_mistakes_more():

@@ -26,7 +26,8 @@ from src.utils.config import load_config
 TEST_COLUMNS = [
     "run", "backbone", "params", "accuracy", "macro_precision", "macro_recall", "macro_f1",
     "weighted_f1", "qwk", "binary_accuracy", "binary_sensitivity", "binary_specificity",
-    "binary_auc", "ms_per_image_cuda", "ms_per_image_cpu",
+    "binary_auc", "screening_threshold", "screening_sensitivity", "screening_specificity",
+    "ms_per_image_cuda", "ms_per_image_cpu",
 ]
 
 

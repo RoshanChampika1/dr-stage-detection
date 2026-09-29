@@ -11,7 +11,8 @@ kept. Outputs for a run named RUN:
     outputs/logs/RUN/history.csv          per-epoch metrics
     outputs/logs/RUN/config.yaml          exact settings used
     outputs/metrics/RUN_best_val.json     validation metrics of the best epoch
-    outputs/metrics/experiments.csv       one summary row per run (results table)
+    outputs/metrics/RUN_summary.json      one-line summary of the run
+    outputs/metrics/experiments.csv       all run summaries (rebuilt from the JSON files)
     outputs/figures/RUN_curves.png        accuracy / loss / QWK curves
 
 Examples:
@@ -40,6 +41,7 @@ from src.data.augmentation import get_train_transforms
 from src.data.dataset import DRDataset, build_cache, class_weights, make_sampler
 from src.evaluation.metrics import compute_metrics
 from src.evaluation.plots import plot_history
+from src.evaluation.summarize import rebuild_tables
 from src.models.factory import (
     build_model,
     count_parameters,
@@ -276,11 +278,9 @@ def main() -> None:
         "val_binary_auc": round(best_metrics.get("binary_auc", float("nan")), 4),
         "minutes": round(minutes, 1),
     }
-    exp_file = paths["metrics_dir"] / "experiments.csv"
-    exp = pd.read_csv(exp_file) if exp_file.exists() else pd.DataFrame()
-    exp = pd.concat([exp[exp.get("run", pd.Series(dtype=str)) != run] if len(exp) else exp,
-                     pd.DataFrame([summary])], ignore_index=True)
-    exp.to_csv(exp_file, index=False)
+    with open(paths["metrics_dir"] / f"{run}_summary.json", "w") as f:
+        json.dump(summary, f, indent=2)
+    rebuild_tables(paths["metrics_dir"])
 
     print(f"\nDone in {minutes:.1f} min. Best epoch {best_metrics['epoch']}: "
           f"val acc {best_metrics['accuracy']:.3f}, macro F1 {best_metrics['macro_f1']:.3f}, "

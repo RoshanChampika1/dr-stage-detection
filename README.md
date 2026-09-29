@@ -89,12 +89,20 @@ python -m src.training.train --run-name effb0_sampler --balancing sampler
 python -m src.training.train --run-name resnet50_cw --backbone resnet50
 python -m src.training.train --run-name effb0_raw --no-enhancement   # preprocessing ablation
 
+# Evaluate on the held-out test split (metrics, confusion matrix, ROC, errors, Grad-CAM)
+python -m src.evaluation.evaluate --runs effb0_cw resnet50_cw
+
+# Rebuild the results tables from all per-run result files
+python -m src.evaluation.summarize
+
 # Unit tests
 pytest
 ```
 
 Each training run writes `models/<run>/best.pt`, `outputs/logs/<run>/history.csv`,
-`outputs/figures/<run>_curves.png` and a summary row in `outputs/metrics/experiments.csv`.
+`outputs/figures/<run>_curves.png` and `outputs/metrics/<run>_summary.json`. Evaluation writes
+`<run>_test.json`, per-class metrics, predictions and figures. `experiments.csv` (validation) and
+`test_results.csv` (test) are rebuilt from these per-run files, so runs from different sessions merge.
 
 ## Model and training
 

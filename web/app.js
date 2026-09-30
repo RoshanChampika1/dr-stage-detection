@@ -1,45 +1,44 @@
-// Front end for the DR grading API: upload, call /predict, show the result.
+// Diabetic retinopathy grading in the browser with ONNX Runtime Web.
+// The photograph is processed on this device only; nothing is uploaded.
+"use strict";
 
-// When the page is served by the API itself (/app/ on the Space or locally),
-// use the same origin; otherwise use the address from config.js.
-const API = location.pathname.startsWith("/app")
-  ? location.origin
-  : (window.DR_API_URL || "").replace(/\/$/, "");
-
+const MODEL_URL = "model/dr_model.onnx";
+const META_URL = "model/model_meta.json";
 const COLORS = ["var(--s0)", "var(--s1)", "var(--s2)", "var(--s3)", "var(--s4)"];
+const ADVICE = [
+  "No signs of diabetic retinopathy detected. Continue routine annual screening.",
+  "Mild non-proliferative DR (microaneurysms only). Re-screen in 6-12 months.",
+  "Moderate non-proliferative DR. Refer to an ophthalmologist.",
+  "Severe non-proliferative DR. Urgent referral to an ophthalmologist.",
+  "Proliferative DR. Urgent referral: sight-threatening, needs treatment.",
+];
 const $ = (id) => document.getElementById(id);
 
-let file = null;
+let session = null, meta = null, photo = null;
 let images = { photo: null, input: null, cam: null };
-let serverReady = false;
 
-// ---------- server status (the free Space sleeps when idle) ----------
-function setServer(state, text) {
+// ---------- model loading ----------
+function setStatus(state, text) {
   $("server").dataset.state = state;
   $("server-text").textContent = text;
 }
 
-async function wakeServer() {
-  setServer("waking", "Connecting to the model server");
-  const started = Date.now();
-  for (let attempt = 0; attempt < 40; attempt++) {
-    try {
-      const res = await fetch(`${API}/health`, { cache: "no-store" });
-      if (res.ok) {
-        const info = await res.json();
-        serverReady = true;
-        setServer("ready", "Model ready");
-        showModelInfo(info.model);
-        updateGradeButton();
-        return;
-      }
-    } catch (_) { /* server still starting */ }
-    if (Date.now() - started > 8000) {
-      setServer("waking", "Starting the model server (up to a minute after a quiet period)");
-    }
-    await new Promise((r) => setTimeout(r, 4000));
+async function loadModel() {
+  setStatus("waking", "Loading the model (16 MB, only on the first visit)");
+  try {
+    ort.env.wasm.numThreads = self.crossOriginIsolated ? Math.min(4, navigator.hardwareConcurrency || 1) : 1;
+    const [m, s] = await Promise.all([
+      fetch(META_URL).then((r) => { if (!r.ok) throw new Error("model information missing"); return r.json(); }),
+      ort.InferenceSession.create(MODEL_URL, { executionProviders: ["wasm"] }),
+    ]);
+    meta = m; session = s;
+    setStatus("ready", "Model ready. Photos stay on this device.");
+    showModelInfo(meta);
+    updateGradeButton();
+  } catch (err) {
+    console.error(err);
+    setStatus("down", "The model could not be loaded. Reload the page to try again.");
   }
-  setServer("down", "Model server unavailable. Reload the page to try again.");
 }
 
 function showModelInfo(m) {
@@ -54,30 +53,64 @@ function showModelInfo(m) {
     `retinopathy poorly, because its lesions are tiny at this image size.`;
 }
 
+// ---------- analysis (also usable from the console: await drGrade(imageData)) ----------
+async function drGrade(img) {
+  const t0 = performance.now();
+  const input = DRPre.preprocess(img, meta);
+  const size = meta.image_size;
+  const tensor = new ort.Tensor("float32", DRPre.toTensor(input, meta.mean, meta.std), [1, 3, size, size]);
+  const out = await session.run({ image: tensor });
+  const probs = Array.from(out.probabilities.data);
+  const stage = probs.indexOf(Math.max(...probs));
+  const f = out.features;
+  const heat = DRPre.cam(f.data, f.dims.slice(1), meta.classifier_weight[stage], size);
+  const ms = performance.now() - t0;
+
+  const warnings = DRPre.qualityWarnings(img, input, meta.preprocessing.border_threshold ?? 4);
+  if (probs[stage] < DRPre.LIMITS.lowConfidence) warnings.push("Low confidence: the model is unsure between stages.");
+  const pDR = 1 - probs[0];
+  return {
+    stage, label: meta.class_names[stage], confidence: probs[stage], probabilities: probs,
+    dr_probability: pDR, screening_threshold: meta.screening_threshold,
+    refer: pDR >= meta.screening_threshold, advice: ADVICE[stage], warnings,
+    input, overlay: DRPre.overlay(input, heat), ms,
+  };
+}
+window.drGrade = drGrade;
+
 // ---------- choosing a photo ----------
-function pickFile(f) {
+function toDataURL(img) {
+  const c = document.createElement("canvas");
+  c.width = img.width; c.height = img.height;
+  c.getContext("2d").putImageData(new ImageData(img.data, img.width, img.height), 0, 0);
+  return c.toDataURL("image/png");
+}
+
+async function pickFile(f) {
   if (!f) return;
-  if (!f.type.startsWith("image/")) {
-    showError("Choose an image file (JPG or PNG).");
+  if (!f.type.startsWith("image/")) { showError("Choose an image file (JPG or PNG)."); return; }
+  if (f.size > 20 * 1024 * 1024) { showError("Choose an image smaller than 20 MB."); return; }
+  try {
+    const bmp = await createImageBitmap(f);
+    const c = document.createElement("canvas");
+    c.width = bmp.width; c.height = bmp.height;
+    const ctx = c.getContext("2d");
+    ctx.drawImage(bmp, 0, 0);
+    const d = ctx.getImageData(0, 0, c.width, c.height);
+    photo = { width: d.width, height: d.height, data: d.data };
+    images = { photo: c.toDataURL("image/jpeg", 0.92), input: null, cam: null };
+  } catch (_) {
+    showError("This file could not be read as an image. Use JPG or PNG.");
     return;
   }
-  file = f;
-  const reader = new FileReader();
-  reader.onload = () => {
-    images = { photo: reader.result, input: null, cam: null };
-    $("views").hidden = true;
-    $("view-note").hidden = true;
-    showView("photo");
-    $("empty").hidden = true;
-    resetResult();
-  };
-  reader.readAsDataURL(f);
+  $("views").hidden = true;
+  showView("photo");
+  $("empty").hidden = true;
+  resetResult();
   updateGradeButton();
 }
 
-function updateGradeButton() {
-  $("grade").disabled = !(file && serverReady);
-}
+function updateGradeButton() { $("grade").disabled = !(photo && session); }
 
 const drop = $("drop");
 drop.addEventListener("click", () => $("file").click());
@@ -98,11 +131,11 @@ const VIEW_NOTES = {
   input: "What the network sees: cropped to the retina and resized to 224 × 224 pixels.",
   cam: "Red areas raised the score of the predicted stage the most (Grad-CAM).",
 };
+const VIEW_ALT = { photo: "Chosen fundus photograph", input: "Model input image", cam: "Grad-CAM heatmap over the retina" };
 function showView(name) {
   const img = $("view");
   img.src = images[name];
-  img.alt = { photo: "Uploaded fundus photograph", input: "Model input image",
-              cam: "Grad-CAM heatmap over the retina" }[name];
+  img.alt = VIEW_ALT[name];
   img.hidden = false;
   document.querySelectorAll(".views button").forEach((b) =>
     b.setAttribute("aria-selected", String(b.dataset.view === name)));
@@ -114,47 +147,31 @@ document.querySelectorAll(".views button").forEach((b) =>
 
 // ---------- grading ----------
 function resetResult() {
-  $("out").hidden = true;
-  $("error").hidden = true;
-  $("idle").hidden = false;
+  $("out").hidden = true; $("error").hidden = true; $("idle").hidden = false;
 }
 function showError(msg) {
-  $("busy").hidden = true;
-  $("error").textContent = msg;
-  $("error").hidden = false;
+  $("busy").hidden = true; $("idle").hidden = true;
+  $("error").textContent = msg; $("error").hidden = false;
 }
 
 $("grade").addEventListener("click", async () => {
-  if (!file) return;
-  $("idle").hidden = true;
-  $("out").hidden = true;
-  $("error").hidden = true;
-  $("busy").hidden = false;
+  if (!photo || !session) return;
+  $("idle").hidden = true; $("out").hidden = true; $("error").hidden = true; $("busy").hidden = false;
   $("grade").disabled = true;
-  const slow = setTimeout(() => {
-    $("busy-text").textContent = "Still working, the server may be starting up";
-  }, 8000);
+  await new Promise((r) => setTimeout(r, 30)); // let the spinner appear
   try {
-    const body = new FormData();
-    body.append("file", file);
-    const res = await fetch(`${API}/predict`, { method: "POST", body });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.detail || `The server returned an error (${res.status}).`);
-    render(data);
+    render(await drGrade(photo));
   } catch (err) {
-    showError(err.message === "Failed to fetch"
-      ? "Could not reach the model server. Check your connection and try again."
-      : err.message);
+    console.error(err);
+    showError(err.message || "The photo could not be analysed.");
   } finally {
-    clearTimeout(slow);
-    $("busy-text").textContent = "Grading the photo";
     updateGradeButton();
   }
 });
 
 function render(d) {
-  images.input = `data:image/png;base64,${d.model_input_png}`;
-  images.cam = `data:image/png;base64,${d.gradcam_png}`;
+  images.input = toDataURL(d.input);
+  images.cam = toDataURL(d.overlay);
   $("views").hidden = false;
   showView("cam");
 
@@ -165,29 +182,28 @@ function render(d) {
 
   const bars = $("bars");
   bars.innerHTML = "";
+  document.querySelectorAll(".bar-labels").forEach((el) => el.remove());
   const labels = document.createElement("div");
   labels.className = "bar-labels";
-  d.probabilities.forEach((p) => {
-    const chosen = p.stage === d.stage;
+  d.probabilities.forEach((p, i) => {
+    const chosen = i === d.stage;
     const bar = document.createElement("div");
     bar.className = `bar${chosen ? " chosen" : ""}`;
-    bar.style.setProperty("--c", COLORS[p.stage]);
+    bar.style.setProperty("--c", COLORS[i]);
     bar.style.setProperty("--h", "0%");
-    bar.innerHTML = `<span class="bar-value">${Math.round(p.probability * 100)}%</span><div class="bar-fill"></div>`;
+    bar.innerHTML = `<span class="bar-value">${Math.round(p * 100)}%</span><div class="bar-fill"></div>`;
     bars.appendChild(bar);
     const lab = document.createElement("div");
     lab.className = `bar-label${chosen ? " chosen" : ""}`;
-    lab.textContent = `${p.stage} ${p.label}`;
+    lab.textContent = `${i} ${meta.class_names[i]}`;
     labels.appendChild(lab);
     requestAnimationFrame(() => requestAnimationFrame(() =>
-      bar.style.setProperty("--h", `${Math.max(p.probability * 100, 1)}%`)));
+      bar.style.setProperty("--h", `${Math.max(p * 100, 1)}%`)));
   });
   bars.after(labels);
-  document.querySelectorAll(".bar-labels").forEach((el, i, all) => { if (i < all.length - 1) el.remove(); });
 
   const dec = $("decision");
-  dec.textContent = d.refer ? "Refer: signs of diabetic retinopathy likely"
-                            : "No referable retinopathy detected";
+  dec.textContent = d.refer ? "Refer: signs of diabetic retinopathy likely" : "No referable retinopathy detected";
   dec.className = `decision ${d.refer ? "refer" : "clear"}`;
   $("meter-tick").style.left = `calc(${d.screening_threshold * 100}% - 1px)`;
   $("meter-fill").style.width = "0";
@@ -202,10 +218,10 @@ function render(d) {
   w.innerHTML = "";
   d.warnings.forEach((t) => { const li = document.createElement("li"); li.textContent = t; w.appendChild(li); });
   w.hidden = d.warnings.length === 0;
-  $("timing").textContent = `Analysed in ${Math.round(d.inference_ms)} ms on the server.`;
+  $("timing").textContent = `Analysed in ${Math.round(d.ms)} ms on this device.`;
 
   $("busy").hidden = true;
   $("out").hidden = false;
 }
 
-wakeServer();
+loadModel();

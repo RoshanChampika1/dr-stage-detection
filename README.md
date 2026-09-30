@@ -128,25 +128,33 @@ Turn the GPU on (*Settings → Accelerator → GPU T4 x2*) and internet on (need
 the pretrained weights). On Kaggle, preprocessed images are cached in `/kaggle/temp/processed`.
 
 ## Web demo
+The demo runs the trained model **in the browser** with ONNX Runtime Web: the photograph is
+analysed on the user's device and never uploaded. The page is static, so it is hosted for free
+on Vercel (or any static host).
 
-- `api/`: FastAPI inference service. It loads a checkpoint and uses the same preprocessing code
-  as training, with the preprocessing settings stored in the checkpoint.
-  `POST /predict` returns the stage, per-stage probabilities, the referral decision, image-quality
-  warnings, the model input image and a Grad-CAM heatmap. `GET /health` returns model information.
-- `web/`: static page (HTML, CSS, JavaScript) that calls the API.
-- Hosting: the API runs on a Hugging Face Space (Docker, free CPU), the page on Vercel.
-  The Space only contains `api/space/Dockerfile`, `api/space/README.md` and the model file; the
-  code is cloned from this repository when the Space builds.
-
-Run locally (copy the trained `best.pt` to `api/model/best.pt` first):
+- `web/`: the page (`index.html`, `style.css`, `app.js`) and `preprocess.js`, a JavaScript port
+  of the training preprocessing (adaptive crop, OpenCV-identical resize, ImageNet normalisation,
+  image-quality checks). Tested against the Python code: within ±1 grey level per pixel and the
+  same predictions.
+- `web/model/`: `dr_model.onnx` (network, 16 MB) and `model_meta.json` (class names,
+  preprocessing, screening threshold, classifier weights for the heatmap), created by:
 
 ```bash
-pip install -r api/requirements.txt
-uvicorn api.main:app --port 8000
-# open http://localhost:8000/app/
+python -m src.deployment.export_onnx --checkpoint models/effb0_raw_lr3e-4/best.pt
 ```
 
-The page served by the API at `/app/` works on its own; the Vercel copy reads the API address
-from `web/config.js`.
+  The export checks that ONNX and PyTorch agree and that the heatmap computed from the feature
+  maps and classifier weights equals Grad-CAM (exact for global-average-pool + linear heads).
+
+Run locally: `python -m http.server 8000 --directory web`, then open http://localhost:8000.
+
+Deploy on Vercel: import the GitHub repository, set **Root Directory** to `web`, framework
+preset **Other**, no build command.
+
+`api/` contains the same inference as a **FastAPI server** (for a clinic server or a paid
+container host): `POST /predict`, `GET /health`, the page at `/app/`, and `api/space/Dockerfile`
+for Docker. Run it with `uvicorn api.main:app --port 8000` after copying the checkpoint to
+`api/model/best.pt`.
 
 **Research prototype only. Not a medical device and not for diagnosis.**
+

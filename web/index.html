@@ -14,10 +14,10 @@
   <header class="top">
     <div>
       <h1>Diabetic retinopathy grading</h1>
-      <p class="lede">Upload a colour fundus photograph. A convolutional neural network estimates the stage of diabetic retinopathy and shows which parts of the retina it based the decision on.</p>
+      <p class="lede">Choose a colour fundus photograph. A convolutional neural network estimates the stage of diabetic retinopathy and shows which parts of the retina it based the decision on. The analysis runs in your browser, so the photo never leaves your device.</p>
     </div>
     <p class="server" id="server" role="status">
-      <span class="dot" aria-hidden="true"></span><span id="server-text">Connecting to the model server</span>
+      <span class="dot" aria-hidden="true"></span><span id="server-text">Loading the model</span>
     </p>
   </header>
 
@@ -28,7 +28,7 @@
         <img id="view" alt="" hidden>
         <div class="empty" id="empty">
           <p><strong>Drop a fundus photo here</strong></p>
-          <p>or press to choose a file (JPG or PNG, up to 10 MB)</p>
+          <p>or press to choose a file (JPG or PNG)</p>
         </div>
       </div>
       <input type="file" id="file" accept="image/jpeg,image/png,image/webp,image/bmp,image/tiff" hidden>
@@ -96,6 +96,7 @@
     <details>
       <summary>How it works</summary>
       <p>The photo is cropped to the retina and resized to 224 × 224 pixels, exactly as during training. An EfficientNet-B0 network, pretrained on ImageNet and fine-tuned on 24,588 retinal photographs from the EyePACS screening programme, outputs a probability for each of the five stages. The heatmap (Grad-CAM) highlights the regions that most increased the score of the predicted stage.</p>
+      <p>The network runs inside this page with ONNX Runtime Web. The photo is analysed on your device and is not uploaded or stored anywhere.</p>
       <p>The referral decision uses the probability of any retinopathy (1 minus the probability of No DR). Its threshold was chosen on validation images so that about 80% of eyes with retinopathy are referred.</p>
       <p id="metrics"></p>
     </details>
@@ -106,7 +107,8 @@
     <p><a href="https://github.com/RoshanChampika1/dr-stage-detection">Source code</a></p>
   </footer>
 
-  <script src="config.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/ort.min.js"></script>
+  <script src="preprocess.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

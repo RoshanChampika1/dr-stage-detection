@@ -33,11 +33,15 @@ def client(tmp_path_factory):
 
 
 def fundus_png(brightness: int = 150) -> bytes:
+    """Synthetic fundus-like photo: textured disc (vessel-like lines) on black."""
+    rng = np.random.default_rng(0)
     img = np.zeros((300, 300, 3), np.uint8)
     cv2.circle(img, (150, 150), 130, (40, brightness // 2, brightness), -1)
-    for x, y in [(120, 130), (170, 160), (150, 100)]:
-        cv2.circle(img, (x, y), 3, (20, 20, 90), -1)
-    img = cv2.add(img, np.random.default_rng(0).integers(0, 6, img.shape, dtype=np.uint8))
+    retina = img.any(axis=2)
+    for _ in range(25):  # vessel-like texture so the image is not "blurred"
+        p1, p2 = rng.integers(40, 260, 2), rng.integers(40, 260, 2)
+        cv2.line(img, tuple(map(int, p1)), tuple(map(int, p2)), (20, 20, brightness // 2), 2)
+    img[~retina] = 0
     return cv2.imencode(".png", img)[1].tobytes()
 
 

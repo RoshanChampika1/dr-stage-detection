@@ -95,12 +95,14 @@ class Predictor:
             "test_metrics": self.card.get("test_metrics", {}),
         }
 
-    def quality_warnings(self, img: np.ndarray) -> list[str]:
+    def quality_warnings(self, img: np.ndarray, model_input: np.ndarray) -> list[str]:
         """Warnings for images the model is likely to misjudge (EDA findings).
 
-        Checks, in order: is there a retina at all, does the image have the
-        dark border of a fundus photograph, and is it too dark, overexposed
-        or blurred.
+        Checks, in order: is there a retina at all and does the uploaded image
+        have the dark border of a fundus photograph (on the original), then
+        is it too dark, overexposed or blurred (on the 224 px model input,
+        the same scale as the training images the limits come from). The
+        web page (web/preprocess.js) applies the same checks.
         """
         grey = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
         h, w = grey.shape
@@ -116,7 +118,7 @@ class Predictor:
                     "around the retina). The result is not meaningful."]
 
         warnings = []
-        q = image_quality_metrics(img, min_thr)
+        q = image_quality_metrics(model_input, min_thr)
         if q["brightness"] < MIN_BRIGHTNESS:
             warnings.append("Image is very dark; lesions may be hidden.")
         elif q["brightness"] > MAX_BRIGHTNESS:
@@ -142,7 +144,7 @@ class Predictor:
 
         p_dr = float(1.0 - probs[0])
         confidence = float(probs[stage])
-        warnings = self.quality_warnings(img)
+        warnings = self.quality_warnings(img, prep)
         if confidence < LOW_CONFIDENCE:
             warnings.append("Low confidence: the model is unsure between stages.")
 

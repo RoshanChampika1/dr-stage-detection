@@ -1,0 +1,6 @@
+stage,precision,recall,f1,support
+No DR,0.8464,0.8916,0.8684,3875
+Mild,0.1502,0.1196,0.1331,368
+Moderate,0.5128,0.4063,0.4534,790
+Severe,0.4336,0.4806,0.4559,129
+Proliferative DR,0.5238,0.6111,0.5641,108

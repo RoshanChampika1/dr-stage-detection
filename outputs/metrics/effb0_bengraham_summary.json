@@ -1,0 +1,20 @@
+{
+  "run": "effb0_bengraham",
+  "backbone": "efficientnet_b0",
+  "balancing": "class_weights",
+  "balance_power": 0.5,
+  "enhancement": true,
+  "preprocessing": "ben_graham",
+  "pretrained": true,
+  "finetune_lr": 0.0001,
+  "dropout": 0.3,
+  "batch_size": 32,
+  "subset": 1.0,
+  "epochs_run": 23,
+  "best_epoch": 20,
+  "val_acc": 0.7616,
+  "val_macro_f1": 0.4714,
+  "val_qwk": 0.6191,
+  "val_binary_auc": 0.7839,
+  "minutes": 34.8
+}

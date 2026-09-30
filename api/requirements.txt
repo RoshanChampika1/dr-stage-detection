@@ -1,0 +1,10 @@
+# Inference-only dependencies (CPU). Used by the Hugging Face Space.
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch>=2.2
+timm>=0.9
+opencv-python-headless>=4.9
+numpy
+pyyaml
+fastapi>=0.110
+uvicorn[standard]>=0.29
+python-multipart

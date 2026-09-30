@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Diabetic retinopathy grading</title>
+  <meta name="description" content="Upload a colour fundus photograph to estimate the diabetic retinopathy stage with a CNN, with a Grad-CAM heatmap of the evidence.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="top">
+    <div>
+      <h1>Diabetic retinopathy grading</h1>
+      <p class="lede">Upload a colour fundus photograph. A convolutional neural network estimates the stage of diabetic retinopathy and shows which parts of the retina it based the decision on.</p>
+    </div>
+    <p class="server" id="server" role="status">
+      <span class="dot" aria-hidden="true"></span><span id="server-text">Connecting to the model server</span>
+    </p>
+  </header>
+
+  <main class="layout">
+    <section class="viewer" aria-label="Photograph">
+      <div class="aperture" id="drop" tabindex="0" role="button"
+           aria-label="Choose or drop a fundus photograph">
+        <img id="view" alt="" hidden>
+        <div class="empty" id="empty">
+          <p><strong>Drop a fundus photo here</strong></p>
+          <p>or press to choose a file (JPG or PNG, up to 10 MB)</p>
+        </div>
+      </div>
+      <input type="file" id="file" accept="image/jpeg,image/png,image/webp,image/bmp,image/tiff" hidden>
+
+      <div class="views" id="views" role="tablist" aria-label="Image view" hidden>
+        <button role="tab" data-view="photo" aria-selected="true">Photo</button>
+        <button role="tab" data-view="input" aria-selected="false">Model input</button>
+        <button role="tab" data-view="cam" aria-selected="false">Heatmap</button>
+      </div>
+      <p class="view-note" id="view-note" hidden></p>
+
+      <div class="actions">
+        <button class="secondary" id="choose">Choose photo</button>
+        <button class="primary" id="grade" disabled>Grade photo</button>
+      </div>
+    </section>
+
+    <section class="result" aria-live="polite" aria-label="Result">
+      <div id="idle" class="idle">
+        <h2>Result</h2>
+        <p>The grade appears here after you choose a photo and press <em>Grade photo</em>.</p>
+        <ol class="stages-legend">
+          <li><span class="swatch s0"></span>0 No DR</li>
+          <li><span class="swatch s1"></span>1 Mild: microaneurysms only</li>
+          <li><span class="swatch s2"></span>2 Moderate: haemorrhages, exudates</li>
+          <li><span class="swatch s3"></span>3 Severe: extensive haemorrhages</li>
+          <li><span class="swatch s4"></span>4 Proliferative: new blood vessels</li>
+        </ol>
+      </div>
+
+      <div id="busy" class="busy" hidden>
+        <div class="spinner" aria-hidden="true"></div>
+        <p id="busy-text">Grading the photo</p>
+      </div>
+
+      <p id="error" class="error" role="alert" hidden></p>
+
+      <div id="out" hidden>
+        <p class="stage-number" id="stage-number"></p>
+        <h2 class="stage-name" id="stage-name"></h2>
+        <p class="confidence" id="confidence"></p>
+
+        <figure class="scale" aria-label="Probability of each stage">
+          <div class="bars" id="bars"></div>
+          <figcaption>Probability of each stage</figcaption>
+        </figure>
+
+        <div class="screen" id="screen">
+          <p class="decision" id="decision"></p>
+          <div class="meter" aria-hidden="true">
+            <div class="meter-fill" id="meter-fill"></div>
+            <div class="meter-tick" id="meter-tick"></div>
+          </div>
+          <p class="meter-note" id="meter-note"></p>
+        </div>
+
+        <p class="advice" id="advice"></p>
+        <ul class="warnings" id="warnings" hidden></ul>
+        <p class="timing" id="timing"></p>
+      </div>
+    </section>
+  </main>
+
+  <section class="about">
+    <details>
+      <summary>How it works</summary>
+      <p>The photo is cropped to the retina and resized to 224 × 224 pixels, exactly as during training. An EfficientNet-B0 network, pretrained on ImageNet and fine-tuned on 24,588 retinal photographs from the EyePACS screening programme, outputs a probability for each of the five stages. The heatmap (Grad-CAM) highlights the regions that most increased the score of the predicted stage.</p>
+      <p>The referral decision uses the probability of any retinopathy (1 minus the probability of No DR). Its threshold was chosen on validation images so that about 80% of eyes with retinopathy are referred.</p>
+      <p id="metrics"></p>
+    </details>
+  </section>
+
+  <footer class="foot">
+    <p><strong>Research prototype, not a medical device.</strong> It must not be used to diagnose or to decide treatment. Anyone with diabetes should have regular eye examinations by a qualified professional.</p>
+    <p><a href="https://github.com/RoshanChampika1/dr-stage-detection">Source code</a></p>
+  </footer>
+
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

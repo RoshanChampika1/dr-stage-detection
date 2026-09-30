@@ -1,0 +1,14 @@
+{
+  "run": "effb0_raw_lr3e-4",
+  "description": "EfficientNet-B0, ImageNet-pretrained, two-stage fine-tuning (lr 3e-4), class-weighted loss, input: black-border crop + resize to 224 + ImageNet normalisation. Selected by validation QWK.",
+  "screening_threshold": 0.3584,
+  "screening_note": "Threshold on P(DR) = 1 - P(No DR), chosen on the validation set for 80% sensitivity.",
+  "test_metrics": {
+    "accuracy": 0.7918,
+    "macro_f1": 0.5076,
+    "qwk": 0.6696,
+    "binary_auc": 0.8262,
+    "screening_sensitivity": 0.8065,
+    "screening_specificity": 0.6418
+  }
+}

@@ -126,3 +126,27 @@ In a new Kaggle Notebook (GPU on, dataset attached, internet on):
 
 Turn the GPU on (*Settings → Accelerator → GPU T4 x2*) and internet on (needed to download
 the pretrained weights). On Kaggle, preprocessed images are cached in `/kaggle/temp/processed`.
+
+## Web demo
+
+- `api/`: FastAPI inference service. It loads a checkpoint and uses the same preprocessing code
+  as training, with the preprocessing settings stored in the checkpoint.
+  `POST /predict` returns the stage, per-stage probabilities, the referral decision, image-quality
+  warnings, the model input image and a Grad-CAM heatmap. `GET /health` returns model information.
+- `web/`: static page (HTML, CSS, JavaScript) that calls the API.
+- Hosting: the API runs on a Hugging Face Space (Docker, free CPU), the page on Vercel.
+  The Space only contains `api/space/Dockerfile`, `api/space/README.md` and the model file; the
+  code is cloned from this repository when the Space builds.
+
+Run locally (copy the trained `best.pt` to `api/model/best.pt` first):
+
+```bash
+pip install -r api/requirements.txt
+uvicorn api.main:app --port 8000
+# open http://localhost:8000/app/
+```
+
+The page served by the API at `/app/` works on its own; the Vercel copy reads the API address
+from `web/config.js`.
+
+**Research prototype only. Not a medical device and not for diagnosis.**

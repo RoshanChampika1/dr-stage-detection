@@ -128,6 +128,8 @@ Turn the GPU on (*Settings → Accelerator → GPU T4 x2*) and internet on (need
 the pretrained weights). On Kaggle, preprocessed images are cached in `/kaggle/temp/processed`.
 
 ## Web demo
+
+**Live demo:** https://dr-stage-detection-web.vercel.app/
 The demo runs the trained model **in the browser** with ONNX Runtime Web: the photograph is
 analysed on the user's device and never uploaded. The page is static, so it is hosted for free
 on Vercel (or any static host).

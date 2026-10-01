@@ -185,13 +185,15 @@ const DRPre = (() => {
 
   // Checks on the uploaded photo (is it a fundus photo?) and on the model
   // input (dark / overexposed / blurred, with limits from the training data).
+  // Returns {gradable, warnings}: gradable is false when the image is not a
+  // fundus photograph, in which case no grade should be shown at all.
   function qualityWarnings(original, modelInput, minThr) {
     const g = grey(original), w = original.width, h = original.height;
     const thr = retinaThreshold(g, minThr);
     let bright = 0;
     for (let i = 0; i < g.length; i++) if (g[i] > thr) bright++;
     if (bright / g.length < LIMITS.minRetinaFraction) {
-      return ["No retina found. Is this a colour fundus photograph?"];
+      return { gradable: false, warnings: ["No retina found. Choose a colour fundus photograph."] };
     }
     const k = Math.max(2, Math.floor(Math.min(w, h) / 12)), corners = [];
     for (const [cx, cy] of [[0, 0], [w - k, 0], [0, h - k], [w - k, h - k]]) {
@@ -201,7 +203,7 @@ const DRPre = (() => {
     }
     corners.sort((a, b) => a - b);
     if ((corners[1] + corners[2]) / 2 > LIMITS.maxCornerBrightness) {
-      return ["This does not look like a fundus photograph (no dark border around the retina). The result is not meaningful."];
+      return { gradable: false, warnings: ["This does not look like a fundus photograph (there is no dark border around a round retina), so it cannot be graded. Choose a colour fundus photograph."] };
     }
 
     const mg = grey(modelInput), s = modelInput.width;
@@ -216,12 +218,12 @@ const DRPre = (() => {
       n++; sum += mg[y * s + x]; lsum += lap; lsq += lap * lap;
     }
     const warnings = [];
-    if (n === 0) return warnings;
+    if (n === 0) return { gradable: true, warnings };
     const brightness = sum / n, sharpness = lsq / n - (lsum / n) ** 2;
     if (brightness < LIMITS.minBrightness) warnings.push("Image is very dark; lesions may be hidden.");
     else if (brightness > LIMITS.maxBrightness) warnings.push("Image is overexposed; retinal detail may be washed out.");
     if (sharpness < LIMITS.minSharpness) warnings.push("Image looks blurred or out of focus.");
-    return warnings;
+    return { gradable: true, warnings };
   }
 
   // ---------- Grad-CAM from feature maps and classifier weights ----------

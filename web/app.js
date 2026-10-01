@@ -14,6 +14,18 @@ const ADVICE = [
 ];
 const $ = (id) => document.getElementById(id);
 
+// The advice follows the referral decision. "No DR" can be the single most
+// likely stage while the combined probability of stages 1-4 is still above
+// the referral threshold; the screening rule then wins.
+function adviceFor(stage, refer, pDR) {
+  if (stage === 0 && refer) {
+    return `No DR is the single most likely stage, but the combined probability of retinopathy ` +
+      `(${Math.round(pDR * 100)}%) is above the referral threshold, so this image should be ` +
+      `checked by a human grader.`;
+  }
+  return ADVICE[stage];
+}
+
 let session = null, meta = null, photo = null;
 let images = { photo: null, input: null, cam: null };
 
@@ -66,13 +78,14 @@ async function drGrade(img) {
   const heat = DRPre.cam(f.data, f.dims.slice(1), meta.classifier_weight[stage], size);
   const ms = performance.now() - t0;
 
-  const warnings = DRPre.qualityWarnings(img, input, meta.preprocessing.border_threshold ?? 4);
-  if (probs[stage] < DRPre.LIMITS.lowConfidence) warnings.push("Low confidence: the model is unsure between stages.");
+  const { gradable, warnings } = DRPre.qualityWarnings(img, input, meta.preprocessing.border_threshold ?? 4);
+  if (gradable && probs[stage] < DRPre.LIMITS.lowConfidence) warnings.push("Low confidence: the model is unsure between stages.");
   const pDR = 1 - probs[0];
+  const refer = pDR >= meta.screening_threshold;
   return {
     stage, label: meta.class_names[stage], confidence: probs[stage], probabilities: probs,
     dr_probability: pDR, screening_threshold: meta.screening_threshold,
-    refer: pDR >= meta.screening_threshold, advice: ADVICE[stage], warnings,
+    refer, advice: adviceFor(stage, refer, pDR), warnings, gradable,
     input, overlay: DRPre.overlay(input, heat), ms,
   };
 }
@@ -160,7 +173,12 @@ $("grade").addEventListener("click", async () => {
   $("grade").disabled = true;
   await new Promise((r) => setTimeout(r, 30)); // let the spinner appear
   try {
-    render(await drGrade(photo));
+    const result = await drGrade(photo);
+    if (!result.gradable) {
+      showError(result.warnings.join(" "));
+      return;
+    }
+    render(result);
   } catch (err) {
     console.error(err);
     showError(err.message || "The photo could not be analysed.");

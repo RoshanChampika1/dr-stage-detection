@@ -39,6 +39,20 @@ ADVICE = {
 }
 
 
+def advice_for(stage: int, refer: bool, p_dr: float) -> str:
+    """Advice text that follows the referral decision.
+
+    "No DR" can be the single most likely stage while the combined
+    probability of stages 1-4 is above the referral threshold; the screening
+    rule then wins, so the advice must not say "routine screening".
+    """
+    if stage == 0 and refer:
+        return (f"No DR is the single most likely stage, but the combined probability of "
+                f"retinopathy ({round(100 * p_dr)}%) is above the referral threshold, so this "
+                f"image should be checked by a human grader.")
+    return ADVICE.get(int(stage), "")
+
+
 def encode_png(img: np.ndarray) -> str:
     """RGB uint8 image -> base64 PNG string (for JSON responses)."""
     ok, buf = cv2.imencode(".png", cv2.cvtColor(img, cv2.COLOR_RGB2BGR))
@@ -95,7 +109,7 @@ class Predictor:
             "test_metrics": self.card.get("test_metrics", {}),
         }
 
-    def quality_warnings(self, img: np.ndarray, model_input: np.ndarray) -> list[str]:
+    def quality_warnings(self, img: np.ndarray, model_input: np.ndarray) -> tuple[bool, list[str]]:
         """Warnings for images the model is likely to misjudge (EDA findings).
 
         Checks, in order: is there a retina at all and does the uploaded image
@@ -103,19 +117,24 @@ class Predictor:
         is it too dark, overexposed or blurred (on the 224 px model input,
         the same scale as the training images the limits come from). The
         web page (web/preprocess.js) applies the same checks.
+
+        Returns:
+            (gradable, warnings). gradable is False when the image is not a
+            fundus photograph; no grade should then be shown.
         """
         grey = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
         h, w = grey.shape
         min_thr = self.cfg["preprocessing"].get("border_threshold", 4)
         retina_fraction = float((grey > retina_threshold(grey, min_thr)).mean())
         if retina_fraction < MIN_RETINA_FRACTION:
-            return ["No retina found. Is this a colour fundus photograph?"]
+            return False, ["No retina found. Choose a colour fundus photograph."]
 
         k = max(2, min(h, w) // 12)
         corners = [grey[:k, :k], grey[:k, -k:], grey[-k:, :k], grey[-k:, -k:]]
         if np.median([c.mean() for c in corners]) > MAX_CORNER_BRIGHTNESS:
-            return ["This does not look like a fundus photograph (no dark border "
-                    "around the retina). The result is not meaningful."]
+            return False, ["This does not look like a fundus photograph (there is no dark border "
+                           "around a round retina), so it cannot be graded. Choose a colour "
+                           "fundus photograph."]
 
         warnings = []
         q = image_quality_metrics(model_input, min_thr)
@@ -125,7 +144,7 @@ class Predictor:
             warnings.append("Image is overexposed; retinal detail may be washed out.")
         if q["sharpness"] < MIN_SHARPNESS:
             warnings.append("Image looks blurred or out of focus.")
-        return warnings
+        return True, warnings
 
     def predict(self, img: np.ndarray) -> dict[str, Any]:
         """Predict the stage of one RGB uint8 fundus image.
@@ -144,11 +163,13 @@ class Predictor:
 
         p_dr = float(1.0 - probs[0])
         confidence = float(probs[stage])
-        warnings = self.quality_warnings(img, prep)
-        if confidence < LOW_CONFIDENCE:
+        gradable, warnings = self.quality_warnings(img, prep)
+        if gradable and confidence < LOW_CONFIDENCE:
             warnings.append("Low confidence: the model is unsure between stages.")
 
+        refer = bool(p_dr >= self.threshold)
         return {
+            "gradable": gradable,
             "stage": int(stage),
             "label": self.class_names[stage],
             "confidence": round(confidence, 4),
@@ -158,8 +179,8 @@ class Predictor:
             ],
             "dr_probability": round(p_dr, 4),
             "screening_threshold": round(self.threshold, 4),
-            "refer": bool(p_dr >= self.threshold),
-            "advice": ADVICE.get(int(stage), ""),
+            "refer": refer,
+            "advice": advice_for(int(stage), refer, p_dr),
             "warnings": warnings,
             "model_input_png": encode_png(prep),
             "gradcam_png": encode_png(overlay(prep, cam)),

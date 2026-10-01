@@ -59,6 +59,7 @@ def test_predict_returns_complete_result(client):
     assert 0 <= d["stage"] <= 4 and d["label"] in [p["label"] for p in d["probabilities"]]
     assert abs(sum(p["probability"] for p in d["probabilities"]) - 1) < 0.01
     assert d["refer"] == (d["dr_probability"] >= d["screening_threshold"])
+    assert d["gradable"] is True
     for key in ("model_input_png", "gradcam_png"):
         img = cv2.imdecode(np.frombuffer(base64.b64decode(d[key]), np.uint8), cv2.IMREAD_COLOR)
         assert img.shape == (224, 224, 3)
@@ -67,6 +68,13 @@ def test_predict_returns_complete_result(client):
 def test_good_image_has_no_quality_warning(client):
     r = client.post("/predict", files={"file": ("eye.png", fundus_png(), "image/png")})
     assert not [w for w in r.json()["warnings"] if "confidence" not in w]
+
+
+def test_advice_follows_referral_decision():
+    from api.inference import ADVICE, advice_for
+    assert advice_for(0, False, 0.2) == ADVICE[0]
+    assert "human grader" in advice_for(0, True, 0.65) and "routine" not in advice_for(0, True, 0.65)
+    assert advice_for(3, True, 0.9) == ADVICE[3]
 
 
 def test_dark_image_gets_quality_warning(client):
@@ -78,6 +86,7 @@ def test_ordinary_photo_is_flagged(client):
     photo = np.full((200, 300, 3), 170, np.uint8)
     cv2.rectangle(photo, (50, 40), (250, 160), (30, 120, 200), -1)
     r = client.post("/predict", files={"file": ("cat.png", cv2.imencode(".png", photo)[1].tobytes(), "image/png")})
+    assert r.json()["gradable"] is False
     assert any("does not look like a fundus" in w for w in r.json()["warnings"])
 
 
@@ -85,6 +94,7 @@ def test_non_fundus_image_is_flagged(client):
     blank = cv2.imencode(".png", np.zeros((200, 200, 3), np.uint8))[1].tobytes()
     r = client.post("/predict", files={"file": ("black.png", blank, "image/png")})
     assert r.status_code == 200
+    assert r.json()["gradable"] is False
     assert any("retina" in w for w in r.json()["warnings"])
 
 
